@@ -281,20 +281,31 @@ makeChips("compChips",COMPETENCIES,"comp");
   (i===0?COMPETENCIES:CALL_TYPES).forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);});
 });
 
-/* ---------- storage ---------- */
+/* ---------- storage ----------
+   Uses Claude's artifact storage when previewed inside Claude,
+   and the browser's own localStorage when opened as a downloaded file.
+   Same interface either way, so the rest of the code doesn't care. */
+const store=(function(){
+  if(window.storage&&typeof window.storage.get==="function")return window.storage;
+  return{
+    async get(k){const v=localStorage.getItem(k);if(v===null)throw new Error("not found");return{key:k,value:v};},
+    async set(k,v){localStorage.setItem(k,v);return{key:k,value:v};},
+    async delete(k){localStorage.removeItem(k);return{key:k,deleted:true};}
+  };
+})();
 async function loadAll(){
   try{
-    const r=await window.storage.get(KEY);
+    const r=await store.get(KEY);
     entries=r&&r.value?JSON.parse(r.value):[];
   }catch(e){entries=[];}
   try{
-    const d=await window.storage.get(DRAFT_KEY);
+    const d=await store.get(DRAFT_KEY);
     if(d&&d.value){const draft=JSON.parse(d.value);if(draft&&(draft.title||draft.clinical||draft.moment)){fillForm(draft);document.getElementById("draftNote").textContent="Draft restored";}}
   }catch(e){}
   updateCount();renderLog();
 }
 async function persist(){
-  try{await window.storage.set(KEY,JSON.stringify(entries));return true;}
+  try{await store.set(KEY,JSON.stringify(entries));return true;}
   catch(e){return false;}
 }
 
@@ -329,7 +340,7 @@ function fillForm(e){
 function clearForm(clearDraft){
   fillForm({});editingId=null;
   document.getElementById("saveStatus").textContent="";
-  if(clearDraft){document.getElementById("draftNote").textContent="";window.storage.delete(DRAFT_KEY).catch(()=>{});}
+  if(clearDraft){document.getElementById("draftNote").textContent="";store.delete(DRAFT_KEY).catch(()=>{});}
 }
 
 /* draft autosave (debounced) */
@@ -339,7 +350,7 @@ function queueDraft(){
   draftTimer=setTimeout(async()=>{
     const d=readForm();
     if(!(d.title||d.clinical||d.moment||d.felt))return;
-    try{await window.storage.set(DRAFT_KEY,JSON.stringify(d));
+    try{await store.set(DRAFT_KEY,JSON.stringify(d));
       document.getElementById("draftNote").textContent="Draft saved "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     }catch(e){}
   },1200);
